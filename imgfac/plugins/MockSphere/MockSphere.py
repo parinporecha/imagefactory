@@ -36,6 +36,7 @@ class MockSphere(object):
 
     def builder_should_create_target_image(self, builder, target, image_id, template, parameters):
         self.log.info('Im N ur MockSphere plugin... Im dictatin Ur target image creatn.')
+        return True
 
     def builder_will_create_target_image(self, builder, target, image_id, template, parameters):
         self.log.info('Im N ur MockSphere plugin... I seen Ur creatn a target image.')

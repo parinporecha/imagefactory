@@ -16,23 +16,47 @@
 
 from FactoryImage import FactoryImage
 from props import prop
+import uuid
 
 class ProviderImage(FactoryImage):
     """ TODO: Docstring for ProviderImage  """
+
+    persist_properties = [ 'identifier', 'type', 'data', 'status',
+                           'status_details', 'template', 'icicle',
+                           'target', 'target_image', 'provider', 'parameters',
+                           'snapshot' ]
+
 
     target_image = prop("_target_image")
     provider = prop("_provider")
     credentials = prop("_credentials")
     parameters = prop("_parameters")
 
-    def __init__(self, target_image, provider, credentials, parameters):
+    def __init__(self, identifier = None, data = None, status = "NEW", status_details = None,
+                 template = None, icicle = None, target_image = None, target = None, provider = None,
+                 credentials = None, parameters = None):
         """ TODO: Fill me in
         
         @param template TODO
         @param target_img_id TODO
         """
         super(ProviderImage, self).__init__()
-        self.target_image = target_image
-        self.provider = provider
-        self.credentials = credentials
-        self.parameters = parameters
+        if identifier:
+            self.create_from_pim(identifier)
+        else:
+            self.identifier = str(uuid.uuid4())
+            self.type = "provider_image"
+            self.data = data
+            self._status = status
+            self.status_details = status_details
+            self.template = template
+            self.icicle = icicle
+            self.target_image = target_image
+            self.target = target
+            self.provider = provider
+            self.credentials = credentials
+            self.parameters = parameters
+
+            self._pi = self._pim.create_image(meta = { 'id':self.identifier } )
+            self.update_pim_metadata()
+            self.datafile = self._pi.body

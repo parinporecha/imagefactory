@@ -16,13 +16,17 @@
 
 import uuid
 import Provider
+import logging
 from threading import Thread
 from props import prop
 from NotificationCenter import NotificationCenter
 from Template import Template
 from PluginManager import PluginManager
 from ApplicationConfiguration import ApplicationConfiguration
-
+from PersistentImageManager import PersistentImageManager
+from BaseImage import BaseImage
+from TargetImage import TargetImage
+from ProviderImage import ProviderImage
 
 class Builder(object):
     """ TODO: Docstring for Builder  """
@@ -33,11 +37,14 @@ class Builder(object):
     base_image = prop("_base_image")
     target_image = prop("_target_image")
     provider_image = prop("_provider_image")
+    image_metadata = prop("_image_metadata")
 
 ##### INITIALIZER
     def __init__(self):
+        self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
         self.app_config = ApplicationConfiguration().configuration
         self.notification_center = NotificationCenter()
+        self.pim = PersistentImageManager()
         self._os_plugin = None
         self._cloud_plugin = None
         self._base_image = None
@@ -56,13 +63,15 @@ class Builder(object):
         thread_name = str(uuid.uuid4())[0:8]
         thread_kwargs = {'template':template, 'parameters':parameters}
         self.base_thread = Thread(target=self._build_image_from_template, name=thread_name, args=(), kwargs=thread_kwargs)
+        # Create what is essentially an empty BaseImage here
+        self.base_image = BaseImage(template = template, parameters = parameters)  
         self.base_thread.start()
 
     def _build_image_from_template(self, template, parameters=None):
         template = template if(isinstance(template, Template)) else Template(template)
         plugin_mgr = PluginManager(self.app_config['plugins'])
         self.os_plugin = plugin_mgr.plugin_for_target((template.os_name, template.os_version, template.os_arch))
-        self.base_image = self.os_plugin.create_base_image(self, template, parameters)
+        self.os_plugin.create_base_image(self, template, parameters)
 
 ##### CUSTOMIZE IMAGE FOR TARGET
     def customize_image_for_target(self, target, image_id=None, template=None, parameters=None):
@@ -77,13 +86,14 @@ class Builder(object):
         """
         thread_name = str(uuid.uuid4())[0:8]
         thread_kwargs = {'target':target, 'image_id':image_id, 'template':template, 'parameters':parameters}
+        self.target_image = TargetImage( target = target, base_image = image_id, template = template, parameters = parameters )
         self.target_thread = Thread(target=self._customize_image_for_target, name=thread_name, args=(), kwargs=thread_kwargs)
         self.target_thread.start()
 
     def _customize_image_for_target(self, target, image_id=None, template=None, parameters=None):
         if(image_id and (not template)):
-            # TODO get the template from the base_image
-            pass
+            self.base_image = BaseImage(identifier = image_id)
+            template = Template(self.base_image.template)
         # TODO: if there is no base_image, we need to wait while one is built.
         # we can probably use NotificationCenter and threading.Event to wait.
         
@@ -102,14 +112,14 @@ class Builder(object):
             pass
         if(_should_create):
             try:
-                self.target_image = self.os_plugin.create_target_image(self, target, image, parameters)
-                self.cloud_plugin.builder_did_create_target_image(self, target, image, template, parameters)
+                self.os_plugin.create_target_image(self, target, image_id, parameters)
+                self.cloud_plugin.builder_did_create_target_image(self, target, image_id, template, parameters)
             except AttributeError:
                 pass
 
 ##### CREATE PROVIDER IMAGE
     def create_image_on_provider(self, provider, credentials, image_id=None, template=None, parameters=None):
-        if(parameters.get('snapshot', False)):
+        if(parameters and parameters.get('snapshot', False)):
             self.snapshot_image_on_provider(provider, credentials, template, parameters)
         else:
             self.push_image_to_provider(provider, credentials, image_id, template, parameters)
@@ -128,10 +138,16 @@ class Builder(object):
         """
         thread_name = str(uuid.uuid4())[0:8]
         thread_kwargs = {'provider':provider, 'credentials':credentials, 'image_id':image_id, 'template':template, 'parameters':parameters}
+        self.provider_image = ProviderImage() 
         self.push_thread = Thread(target=self._push_image_to_provider, name=thread_name, args=(), kwargs=thread_kwargs)
         self.push_thread.start()
 
     def _push_image_to_provider(self, provider, credentials, image_id, template, parameters):
+        if(image_id and (not template)):
+            self.target_image = TargetImage(identifier = image_id)
+            template = Template(self.target_image.template)
+            self.base_image = BaseImage(identifier = self.target_image.base_image)
+
         # TODO: if there is no target_image, we need to wait while one is built.
         # we can probably use NotificationCenter and threading.Event to wait.
         plugin_mgr = PluginManager(self.app_config['plugins'])

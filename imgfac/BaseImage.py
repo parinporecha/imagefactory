@@ -16,16 +16,32 @@
 
 from FactoryImage import FactoryImage
 from props import prop
+import uuid
 
 class BaseImage(FactoryImage):
     """ TODO: Docstring for BaseImage  """
 
-    template = prop("_template")
+    persist_properties = [ 'identifier', 'type', 'data', 'status', 
+                           'status_details', 'template', 'icicle', 'parameters' ]
 
-    def __init__(self, template):
+    def __init__(self, identifier = None, data = None, status = "NEW", status_details = None,
+                 template = None, icicle = None, parameters = None):
         """ TODO: Fill me in
         
         @param template TODO
         """
         super(BaseImage, self).__init__()
-        self.template = template
+        if identifier:
+            self.create_from_pim(identifier)
+        else:            
+            self.identifier = str(uuid.uuid4())
+            self.type = "base_image"
+            self.data = data
+            self._status = status
+            self.status_details = status_details
+            self.template = template
+            self.icicle = icicle
+            self.parameters = parameters
+            self._pi = self._pim.create_image(meta = { 'id':self.identifier } )
+            self.update_pim_metadata()
+            self.datafile = self._pi.body

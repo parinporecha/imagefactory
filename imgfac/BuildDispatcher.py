@@ -24,6 +24,7 @@ from imgfac.Singleton import Singleton
 from imgfac.Template import Template
 from imgfac.JobRegistry import JobRegistry
 from Builder import Builder
+from time import sleep
 
 
 class BuildDispatcher(Singleton):
@@ -39,18 +40,24 @@ class BuildDispatcher(Singleton):
     def builder_for_base_image(self, template, parameters=None):
         builder = Builder()
         builder.build_image_from_template(template)
+        # Hack.  Race.  The base_image property is created in the worker thread.
+        sleep(1)
         self.builders[builder.base_image.identifier] = builder
         return builder
 
     def builder_for_target_image(self, target, image_id=None, template=None, parameters=None):
         builder = Builder()
         builder.customize_image_for_target(target, image_id, template, parameters)
-        self.builders[builder.target_image.identidier] = builder
+        # hack. race. seeabove
+        sleep(1)
+        self.builders[builder.target_image.identifier] = builder
         return builder
 
     def builder_for_provider_image(self, provider, credentials, image_id=None, template=None, parameters=None):
         builder = Builder()
         builder.create_image_on_provider(provider, credentials, image_id, template, parameters)
+        # hack. race. seeabove
+        sleep(1)
         self.builders[builder.provider_image.identifier] = builder
         return builder
 
