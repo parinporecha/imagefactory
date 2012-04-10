@@ -33,34 +33,30 @@ class PersistentImageManager(Singleton):
             pass
         self.storage_location = storage_location
 
-    def get_image(self, query_dict):
-        # Returns a list of objects that match the query
-
-        if not 'id' in query_dict:
-            raise ImageFactoryException("Dict passed to get_image must contain an image 'id' key")
-
-        basename = self.storage_location + "/" + query_dict['id']
+    def get_image_with_id(self, image_id):
+        
+        basename = self.storage_location + "/" + image_id
         metadatafile = basename + ".meta"
         bodyfile = basename + ".body"
 
         if not os.path.exists(metadatafile):
-            return [ ]
+            return None
 
         metadata = json.load(open(metadatafile,"r"))
 
         if not os.path.exists(bodyfile):
             bodyfile = None
 
-        return [ PersistentImage(self, meta = metadata, body = bodyfile) ]
+        return ( metadata, bodyfile )
         
 
     def create_image(self, meta = { }):
         # Create an empty object - used to reserve a UUID and a filesystem location
         # Allow users to pass in a pre-existing ID
         # TODO: verify that ID is unique and has valid structure
-        if not 'id' in meta:
-            meta['id'] = str(uuid.uuid4())
-        image_uuid = meta['id']
+        if not 'identifier' in meta:
+            meta['identifier'] = str(uuid.uuid4())
+        image_uuid = meta['identifier']
         basename = self.storage_location + "/" + str(image_uuid)
         metadatafile = basename + ".meta"
         bodyfile = basename + ".body"
@@ -70,7 +66,7 @@ class PersistentImageManager(Singleton):
         mdf.close()
         open(bodyfile, 'w').close()
         self.log.debug("Created new image object with id (%s)" % (str(image_uuid)))
-        return PersistentImage(self, body = bodyfile, meta = meta)
+        return ( meta, bodyfile )
 
     def set_image_metadata(self, object_id, meta):
         basename = self.storage_location + "/" + str(object_id)
@@ -90,26 +86,4 @@ class PersistentImageManager(Singleton):
         pass
         # Replace the body of object_id
         # For users who don't want to operate directly on filenames
-
-
-class PersistentImage(object):
-
-    # Details of a persistent object
-    def __init__(self, manager, body = "", meta = { }):
-        self.manager = manager
-        # Local filesystem location of object body (can, of course, be a clustered or shared FS)
-        # Users of persistence may modify in place or replace entirely
-        # TODO: Locking/exclusion
-        self.body=body
-        # Metadata of the object - cannot  be modified
-        # TODO: Enforce
-        self.meta=meta
-
-    def update_metadata(self):
-        # Flush metadata changes to the persistent store
-        self.manager.set_image_metadata(self.meta['id'], self.meta) 
-    
-
-    def __repr__(self):
-        return "PersistentImage - body (%s) - metadata (%s)" % (self.body, self.meta)
 

@@ -20,6 +20,7 @@ import logging
 from Notification import Notification
 from NotificationCenter import NotificationCenter
 from PersistentImageManager import PersistentImageManager
+from ImageFactoryException import ImageFactoryException
 
 STATUS_STRINGS = ('NEW','PENDING', 'COMPLETE', 'FAILED')
 NOTIFICATIONS = ('image.status', 'image.percentage')
@@ -34,7 +35,7 @@ class FactoryImage(object):
     identifier = prop("_identifier")
     data = prop("_data")
     icicle = prop("_icicle")
-    status_detail = prop("_status_detail")
+    status_details = prop("_status_details")
 
     def status():
         doc = "A string value."
@@ -74,21 +75,15 @@ class FactoryImage(object):
 ##### End PROPERTIES
 
 
-    def create_from_pim(self, identifier):
-        self._pi = self._pim.get_image( { 'id':identifier } )[0]
-        if not self._pi:
-            raise ImageFactoryException("Could not find image with identifier (%s) in persistent image store" % (identifier))
-
-        self.identifier = identifier
+    def restore_from_persistent_metadata(self, metadata):
         self._status = "NEW"
 
         # Set any of our persist_properties that exist in the external metadata
         # Warn on external props that are not in persist_properties
-        for key in self._pi.meta:
-            if key in self.persist_properties:
-                setattr(self, key, self._pi.meta[key])
-            else:
-                self.log.warn("Ignoring persistent image property (%s)" % (key))
+        for key in metadata:
+            setattr(self, key, metadata[key])
+            if not key in self.persist_properties:
+                self.log.warn("Setting non-standard property (%s) from persistent metadata" % (key))
 
         # Look for any of our persist_properties that were _not_ set above
         # If we find any, warn
@@ -97,24 +92,30 @@ class FactoryImage(object):
                 self.log.warn("Property (%s) was not retrieved from persisten image - setting to None" % (pprop))
                 setattr(self, pprop, None)
 
-        # Finally, set our copy of the location of the body
-        # TODO: Decide if we want to support changing this in our FactoryImage objects
-        #       If we do, decide what that means and what the convention is for updating the persistent image
-        self.datafile = self._pi.body
 
-    def update_pim_metadata(self):
-        # Update all persisten_properties in our PersistentImage object, then flush them to stable storage
+    def update_persistent_metadata(self):
+        pim = PersistentImageManager()
+        meta = { }
         for pprop in self.persist_properties:
-            self._pi.meta[pprop] = getattr(self, pprop, None)
-        self._pi.update_metadata()
+            meta[pprop] = getattr(self, pprop, "")
+        pim.set_image_metadata(self.identifier, meta)
 
 
-    def __init__(self, persist = True):
+    def __init__(self, identifier = None):
         """ TODO: Fill me in
         
         @param template TODO
         """
         self.notification_center = NotificationCenter()
-        self._pim = PersistentImageManager()
         self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
+        if not identifier:
+            # Assume this means that we are a brand new image, not one being restored from
+            # the persistent store.  Create a UUID and create an on-disk representation
+            self.identifier = str(uuid.uuid4())
+            pim = PersistentImageManager()
+            (meta, bodyfile) = pim.create_image( { "identifier": self.identifier } )
+            self.bodyfile = bodyfile
+        else:
+            self.identifier = identifier
+
 

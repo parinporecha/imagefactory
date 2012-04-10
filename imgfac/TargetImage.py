@@ -14,11 +14,11 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-from FactoryImage import FactoryImage
+import FactoryImage
 from props import prop
 import uuid
 
-class TargetImage(FactoryImage):
+class TargetImage(FactoryImage.FactoryImage):
     """ TODO: Docstring for TargetImage  """
 
     persist_properties = [ 'identifier', 'type', 'data', 'status',
@@ -37,21 +37,13 @@ class TargetImage(FactoryImage):
         @param target TODO
         @param parameters TODO
         """
-        super(TargetImage, self).__init__()
-        if identifier:
-            self.create_from_pim(identifier)
-        else:
-            self.identifier = str(uuid.uuid4())
-            self.type = "target_image"
-            self.data = data
-            self._status = status
-            self.status_details = status_details
-            self.template = template
-            self.icicle = icicle
-            self.base_image = base_image
-            self.target = target
-            self.parameters = parameters
-
-            self._pi = self._pim.create_image(meta = { 'id':self.identifier } )
-            self.update_pim_metadata()
-            self.datafile = self._pi.body
+        super(TargetImage, self).__init__(identifier = identifier)
+        self.type = "target_image"
+        self.data = data
+        self._status = status
+        self.status_details = status_details
+        self.template = template
+        self.icicle = icicle
+        self.base_image = base_image
+        self.target = target
+        self.parameters = parameters
