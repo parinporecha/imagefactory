@@ -29,24 +29,24 @@ import traceback
 import pycurl
 import gzip
 import ConfigParser
-import boto.ec2
+#import boto.ec2
 from time import *
 from tempfile import *
 from imgfac.ApplicationConfiguration import ApplicationConfiguration
 from imgfac.ImageFactoryException import ImageFactoryException
 from imgfac.ReservationManager import ReservationManager
 #from BaseBuilder import BaseBuilder
-from boto.s3.connection import S3Connection
-from boto.s3.connection import Location
-from boto.exception import *
-from boto.ec2.blockdevicemapping import EBSBlockDeviceType, BlockDeviceMapping
+#from boto.s3.connection import S3Connection
+#from boto.s3.connection import Location
+#from boto.exception import *
+#from boto.ec2.blockdevicemapping import EBSBlockDeviceType, BlockDeviceMapping
 
 from imgfac.OSDelegate import OSDelegate
 from imgfac.BaseImage import BaseImage
 from imgfac.TargetImage import TargetImage
 
 # Boto is very verbose - shut it up
-logging.getLogger('boto').setLevel(logging.INFO)
+#logging.getLogger('boto').setLevel(logging.INFO)
 
 def subprocess_check_output(*popenargs, **kwargs):
     if 'stdout' in kwargs:
@@ -64,6 +64,7 @@ def subprocess_check_output(*popenargs, **kwargs):
 class FedoraOS(object):
     zope.interface.implements(OSDelegate)
 
+    ## INTERFACE METHOD
     def create_target_image(self, builder, target, base_image, parameters):
         self.log.info('create_target_image() called for FedoraOS plugin - creating a TargetImage')
         self.log.debug("Currently create_target_image() does nothing here")
@@ -81,13 +82,15 @@ class FedoraOS(object):
             self.log.warning("No JEOS amis defined for ec2.  Snapshot builds will not be possible.")
             self.ec2_jeos_amis = {}
 
+    ## INTERFACE METHOD
     def create_base_image(self, builder, template, parameters):
         self.log.info('create_base_image() called for FedoraOS plugin - creating a BaseImage')
 
         self.tdlobj = oz.TDL.TDL(xmlstring=template.xml, rootpw_required=True)
-        # Add in target specific content
-        self.add_target_content()
 
+        # TODO: Standardize reference scheme for the persistent image objects in our builder
+        #   Having local short-name copies like this may well be a good idea though they
+        #   obscure the fact that these objects are in a container "upstream" of our plugin object
         self.base_image = builder.base_image
 
         # TODO: This is a convenience variable for refactoring - rename
@@ -149,7 +152,7 @@ class FedoraOS(object):
             # TODO: Create the base_image object representing this
             # TODO: Create the base_image object at the beginning and then set the diskimage accordingly
 
-
+comment="""
     def init_guest(self, guesttype):
         if guesttype == "local":
             self.guest = oz.Fedora.get_class(self.tdlobj, self.oz_config, None)
@@ -157,11 +160,13 @@ class FedoraOS(object):
             self.guest = FedoraRemoteGuest(self.tdlobj, self.oz_config, None,
                                            "virtio", True, "virtio", True)
         self.guest.diskimage = self.app_config["imgdir"] + "/base-image-" + self.new_image_id + ".dsk"
+"""
 
     def log_exc(self):
         self.log.debug("Exception caught in ImageFactory")
         self.log.debug(traceback.format_exc())
 
+comment="""
     def build_image(self, build_id=None):
         try:
             if self.app_config["ec2_build_style"] == "upload":
@@ -176,6 +181,7 @@ class FedoraOS(object):
             self.log_exc()
             self.status="FAILED"
             raise
+"""
 
     def build_snapshot(self, build_id):
         # All we need do here is store the relevant bits in the Warehouse
@@ -193,6 +199,7 @@ class FedoraOS(object):
         self.log.debug("Completed placeholder warehouse object for linux non-upload image...")
         sleep(5)
 
+comment="""
     def build_upload(self, build_id):
         self.log.debug("Fedora_ec2_Builder: build_upload() called for target %s with warehouse config %s" % (self.target, self.app_config['warehouse']))
         self.status="BUILDING"
@@ -506,6 +513,7 @@ class FedoraOS(object):
 
         # TODO: Based on architecture associate one of two XML blocks that contain the correct
         # regional AKIs for pvgrub
+
 
     def push_image(self, target_image_id, provider, credentials):
         try:
@@ -1311,105 +1319,6 @@ class FedoraOS(object):
                 self.log.warning("Warning, encountered - Instance %s may not be terminated ******** " % (instance_id))
                 self.log.exception(e)
 
-    # This file content is tightly bound up with our mod code above
-    # I've inserted it as class variables for convenience
-    rc_local="""# We have seen timing issues with curl commands - try several times
-for t in 1 2 3 4 5 6 7 8 9 10; do
-  echo "Try number $t" >> /tmp/ec2-keypull.stderr
-  curl -o /tmp/my-key http://169.254.169.254/2009-04-04/meta-data/public-keys/0/openssh-key 2>> /tmp/ec2-keypull.stderr
-  [ -f /tmp/my-key ] && break
-  sleep 10
-done
-
-if ! [ -f /tmp/my-key ]; then
-  echo "Failed to retrieve SSH key after 10 tries and 100 seconds" > /dev/hvc0
-  exit 1
-fi
-
-dd if=/dev/urandom count=50 2>/dev/null|md5sum|awk '{ print $1 }'|passwd --stdin root >/dev/null
-
-if [ ! -d /root/.ssh ] ; then
-mkdir /root/.ssh
-chmod 700 /root/.ssh
-fi
-
-cat /tmp/my-key >> /root/.ssh/authorized_keys
-chmod 600 /root/.ssh/authorized_keys
-
-for home in `find /home/* -maxdepth 0 -type d 2>/dev/null | tr '\\n' ' '`; do
-user=`echo $home | awk -F '/' '{ print $3 }'`
-
-if [ ! -d $home/.ssh ] ; then
-mkdir -p $home/.ssh
-chmod 700 $home/.ssh
-chown $user $home/.ssh
-fi
-
-cat /tmp/my-key >> $home/.ssh/authorized_keys
-chmod 600 $home/.ssh/authorized_keys
-chown $user $home/.ssh/authorized_keys
-
-done
-rm /tmp/my-key
-"""
-
-    ifcfg_eth0="""DEVICE=eth0
-BOOTPROTO=dhcp
-ONBOOT=yes
-TYPE=Ethernet
-USERCTL=yes
-PEERDNS=yes
-IPV6INIT=no
-"""
-
-    menu_lst="""default=0
-timeout=0
-title #TITLE#
-    root (hd0)
-    kernel /boot/vmlinuz-#KERNEL_VERSION# ro root=LABEL=/ rd_NO_PLYMOUTH #KERNEL_OPTIONS#
-    initrd /boot/#KERNEL_IMAGE_NAME#-#KERNEL_VERSION#.img
-"""
-
-    fstab_32bit="""LABEL=/    /         ext3    defaults         1 1
-/dev/xvda2  /mnt      ext3    defaults,nofail         1 2
-/dev/xvda3  swap      swap    defaults,nofail         0 0
-none       /dev/pts  devpts  gid=5,mode=620   0 0
-none       /dev/shm  tmpfs   defaults         0 0
-none       /proc     proc    defaults         0 0
-none       /sys      sysfs   defaults         0 0
-"""
-
-    fstab_64bit="""LABEL=/    /         ext3    defaults         1 1
-/dev/xvdb   /mnt      ext3    defaults,nofail         0 0
-/dev/xvdc   /data     ext3    defaults,nofail         0 0
-none       /dev/pts  devpts  gid=5,mode=620   0 0
-none       /dev/shm  tmpfs   defaults         0 0
-none       /proc     proc    defaults         0 0
-none       /sys      sysfs   defaults         0 0
-"""
-
-    ############ BEGIN CONFIG-LIKE class variables ###########################
-    ##########################################################################
-    # Perhaps there is a better way to do this but this works for now
-
-    # TODO: Ideally we should use boto "Location" references when possible - 1.9 contains only DEFAULT and EU
-    #       The rest are hard coded strings for now.
-    ec2_region_details={
-         'ec2-us-east-1':      { 'boto_loc': Location.DEFAULT,     'host':'us-east-1',      'i386': 'aki-805ea7e9', 'x86_64': 'aki-825ea7eb' },
-         'ec2-us-west-1':      { 'boto_loc': 'us-west-1',          'host':'us-west-1',      'i386': 'aki-83396bc6', 'x86_64': 'aki-8d396bc8' },
-         'ec2-us-west-2':      { 'boto_loc': 'us-west-2',          'host':'us-west-2',      'i386': 'aki-c2e26ff2', 'x86_64': 'aki-98e26fa8' },
-         'ec2-ap-southeast-1': { 'boto_loc': 'ap-southeast-1',     'host':'ap-southeast-1', 'i386': 'aki-a4225af6', 'x86_64': 'aki-aa225af8' },
-         'ec2-ap-northeast-1': { 'boto_loc': 'ap-northeast-1',     'host':'ap-northeast-1', 'i386': 'aki-ec5df7ed', 'x86_64': 'aki-ee5df7ef' },
-         'ec2-sa-east-1':      { 'boto_loc': 'sa-east-1',          'host':'sa-east-1',      'i386': 'aki-bc3ce3a1', 'x86_64': 'aki-cc3ce3d1' },
-         'ec2-eu-west-1':      { 'boto_loc': Location.EU,          'host':'eu-west-1',      'i386': 'aki-64695810', 'x86_64': 'aki-62695816' } }
-
-        # July 13 - new approach - generic JEOS AMIs for Fedora - no userdata and no euca-tools
-        #           ad-hoc ssh keys replace userdata - runtime install of euca tools for bundling
-        # v0.6 of F14 and F15 - dropped F13 for now - also include official public RHEL hourly AMIs for RHEL6
-        # Sept 1 - 2011 - updated us-west Fedora JEOSes to 0.6
-        # Sept 30 - 2011 - Moved out of here entirely to ApplicationConfiguration
-        # ec2_jeos_amis = <not here anymore>
-
 ## Basebuilder stuff
 
     # Utility methods of use to multiple subclasses
@@ -1466,6 +1375,7 @@ none       /sys      sysfs   defaults         0 0
         repositories = include.xpathEval("repositories")
         if len(repositories) > 0:
             self.tdlobj.merge_repositories(str(repositories[0]))
+"""
 
 
     def threadsafe_generate_install_media(self, guest):
