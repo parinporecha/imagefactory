@@ -25,7 +25,8 @@ import json
 import ConfigParser
 from imgfac.ApplicationConfiguration import ApplicationConfiguration
 from imgfac.ImageFactoryException import ImageFactoryException
-from imgfac.VMWare import VMImport
+#from imgfac.VMWare import VMImport
+from imgfac.VSphereHelper import VSphereHelper
 from imgfac.BuildDispatcher import BuildDispatcher
 from IBuilder import IBuilder
 from BaseBuilder import BaseBuilder
@@ -226,10 +227,14 @@ class Fedora_vsphere_Builder(BaseBuilder):
         #       "datastore": "datastore1", "network_name": "VM Network" } }
 
         vm_name = "factory-image-" + self.new_image_id
-        vm_import = VMImport(provider_data['api-url'], self.username, self.password)
-        vm_import.import_vm(datastore=provider_data['datastore'], network_name = provider_data['network_name'],
-                       name=vm_name, disksize_kb = (10*1024*1024 + 2 ), memory=512, num_cpus=1,
-                       guest_id='otherLinux64Guest', imagefilename=input_image)
+        helper = VSphereHelper(provider_data['api-url'], self.username, self.password)
+        helper.create_vm(input_image, vm_name, provider_data['compute_resource'], provider_data['datastore'],
+                         str(10*1024*1024 + 2) + "KB", [ { "network_name": provider_data['network_name'], "type": "VirtualE1000"} ],
+                         "512MB", 1, 'otherLinux64Guest')
+        #vm_import = VMImport(provider_data['api-url'], self.username, self.password)
+        #vm_import.import_vm(datastore=provider_data['datastore'], network_name = provider_data['network_name'],
+        #               name=vm_name, disksize_kb = (10*1024*1024 + 2 ), memory=512, num_cpus=1,
+        #               guest_id='otherLinux64Guest', imagefilename=input_image)
 
         # Create the provdier image
         metadata = dict(target_image=target_image_id, provider=provider_data['name'], icicle="none", target_identifier=vm_name, provider_account_identifier=self.username)
