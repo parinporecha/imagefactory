@@ -31,7 +31,7 @@ from imgfac.ApplicationConfiguration import ApplicationConfiguration
 
 log = logging.getLogger(__name__)
 
-rest_api = Bottle(catchall=True)
+secondary_rest_api = Bottle(catchall=True)
 debug(True)
 
 def log_request(f):
@@ -62,19 +62,14 @@ def api_info():
     return {'name':'imagefactory_secondary', 'version':VERSION, 'api_version':'2.0'}
 
 @rest_api.get('/imagefactory/<image_collection>')
-#@rest_api.get('/imagefactory/base_images/<base_image_id>/<image_collection>')
 @rest_api.get('/imagefactory/target_images/<target_image_id>/<image_collection>')
 @log_request
 @oauth_protect
 def list_images(image_collection, base_image_id=None, target_image_id=None, list_url=None):
     try:
         fetch_spec = {}
-#        if(image_collection == 'base_images'):
-#            fetch_spec['type'] = 'BaseImage'
         if(image_collection == 'target_images'):
             fetch_spec['type'] = 'TargetImage'
-#            if base_image_id:
-#                fetch_spec['base_image_id'] = base_image_id
         elif(image_collection == 'provider_images'):
             fetch_spec['type'] = 'ProviderImage'
             if target_image_id:
@@ -157,15 +152,12 @@ def do_body_upload(upload_id):
     return { "status_text": "Finished without an exception" }
 
 
-@rest_api.post('/imagefactory/provider_images/')
-#@rest_api.post('/imagefactory/base_images/<base_image_id>/<image_collection>')
-#@rest_api.post('/imagefactory/base_images/<base_image_id>/target_images/<target_image_id>/<image_collection>')
-@rest_api.post('/imagefactory/target_images/<target_image_id>/<image_collection>')
+@rest_api.post('/imagefactory/provider_images/<provider_image_id>')
 @log_request
 @oauth_protect
-def create_image(image_collection, base_image_id=None, target_image_id=None):
+def create_provider_image(provider_image_id):
     try:
-        image_type = image_collection[0:-1]
+        image_type = "provider_image"
         request_data = RESTtools.form_data_for_content_type(request.headers.get('Content-Type')).get(image_type)
         if(not request_data):
             raise HTTPResponse(status=400, output='%s not found in request.' % image_type)
@@ -175,29 +167,14 @@ def create_image(image_collection, base_image_id=None, target_image_id=None):
         base_img_id = req_base_img_id if req_base_img_id else base_image_id
         target_img_id = req_target_img_id if req_target_img_id else target_image_id
 
-	#        if(image_collection == 'base_images'):
-	#            builder = BuildDispatcher().builder_for_base_image(template=request_data.get('template'),
-	#                                                               parameters=request_data.get('parameters'))
-	#            image = builder.base_image
-        if(image_collection == 'target_images'):
-            # CLONE - receive metadata for an existing target_image on primary, return URL to PUT body to
-            # If the target_image already exists simply return an error indicating so.
-            # Clients who are racing to do the clone can determine their next step based on this.
-            builder = BuildDispatcher().builder_for_target_image_clone(target=request_data.get('target'),
-                                                                       image_id=base_img_id,
-                                                                       template=request_data.get('template'),
-                                                                       parameters=request_data.get('parameters'))
-            image = builder.target_image
-        elif(image_collection == 'provider_images'):
-            builder = BuildDispatcher().builder_for_provider_image(provider=request_data.get('provider'),
-                                                                   credentials=request_data.get('credentials'),
-                                                                   target=request_data.get('target'),
-                                                                   image_id=target_img_id,
-                                                                   template=request_data.get('template'),
-                                                                   parameters=request_data.get('parameters'))
-            image = builder.provider_image
-        else:
-            raise HTTPResponse(status=404, output="%s not found" % image_collection)
+        builder = BuildDispatcher().builder_for_provider_image(provider=request_data.get('provider'),
+                                                               credentials=request_data.get('credentials'),
+                                                               target=request_data.get('target'),
+                                                               image_id=target_img_id,
+                                                               template=request_data.get('template'),
+                                                               parameters=request_data.get('parameters'),
+                                                               my_image_id=provider_image_id)
+        image = builder.provider_image
 
         _response = {'_type':type(image).__name__,
                      'id':image.identifier,
@@ -215,11 +192,8 @@ def create_image(image_collection, base_image_id=None, target_image_id=None):
         log.exception(e)
         raise HTTPResponse(status=500, output=e)
 
-@rest_api.get('/imagefactory/base_images/<image_id>')
 @rest_api.get('/imagefactory/target_images/<image_id>')
 @rest_api.get('/imagefactory/provider_images/<image_id>')
-@rest_api.get('/imagefactory/base_images/<base_image_id>/target_images/<image_id>')
-@rest_api.get('/imagefactory/base_images/<base_image_id>/target_images/<target_image_id>/provider_images/<image_id>')
 @rest_api.get('/imagefactory/target_images/<target_image_id>/provider_images/<image_id>')
 @log_request
 @oauth_protect
@@ -238,12 +212,7 @@ def image_with_id(image_id, base_image_id=None, target_image_id=None, provider_i
 
         api_url = '%s://%s/imagefactory' % (request.urlparts[0], request.urlparts[1])
 
-        if(_type == "BaseImage"):
-            _objtype = 'base_image'
-            _response['target_images'] = list_images('target_images',
-                                                     base_image_id = image.identifier,
-                                                     list_url='%s/target_images' % api_url)
-        elif(_type == "TargetImage"):
+        if(_type == "TargetImage"):
             _objtype = 'target_image'
             base_image_id = image.base_image_id
             if(base_image_id):
@@ -293,11 +262,8 @@ def get_image_file(image_id, base_image_id=None, target_image_id=None, provider_
         log.exception(e)
         raise HTTPResponse(status=500, output=e)
 
-@rest_api.delete('/imagefactory/base_images/<image_id>')
 @rest_api.delete('/imagefactory/target_images/<image_id>')
 @rest_api.delete('/imagefactory/provider_images/<image_id>')
-@rest_api.delete('/imagefactory/base_images/<base_image_id>/target_images/<image_id>')
-@rest_api.delete('/imagefactory/base_images/<base_image_id>/target_images/<target_image_id>/provider_images/<image_id>')
 @rest_api.delete('/imagefactory/target_images/<target_image_id>/provider_images/<image_id>')
 @log_request
 @oauth_protect
