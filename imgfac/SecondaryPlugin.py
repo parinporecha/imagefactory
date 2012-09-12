@@ -54,7 +54,7 @@ class SecondaryPlugin(object):
         clone_body = self._metadata_dict(builder.target_image)
         clone_response = self.helper._post(clone_path, body = clone_body, content_type='application/json')
         if not 'target_image' in clone_response:
-            raise Exception("Failed to verify that target_image (%s) exists on secondary", % (builder.target_image.identifier))
+            raise Exception("Failed to verify that target_image (%s) exists on secondary" % (builder.target_image.identifier))
 
         # If given an upload ID, upload to the URI
         if 'upload_id' in clone_response:
@@ -75,7 +75,7 @@ class SecondaryPlugin(object):
         provider_image_path = "/imagefactory/provider_images/%s" % builder.provider_image.identifier
         push_body = { 'provider': provider, 'credentials': credentials, 'target': target, 'target_image': target_image,
                       'parameters': parameters }
-        push_response = self.helper._post(push_path, body=push_body, content_type='application/json')
+        push_response = self.helper._post(provider_image_path, body=push_body, content_type='application/json')
 
         # Wait <timeout> for remote provder_image to become COMPLETE
         remote_result = self._wait_for_final_status(provider_image_path, builder.provider_image)        
@@ -90,6 +90,7 @@ class SecondaryPlugin(object):
         provider_image_path = "/imagefactory/provider_images/%s" % builder.provider_image.identifier
         push_body =  { 'provider': provider, 'credentials': credentials, 'target': target, 'template': template,
                       'parameters': parameters }
+        push_response = self.helper._post(provider_image_path, body=push_body, content_type='application/json')
 
         # Wait <timeout> fpr remote provider_image to become COMPLETE
         remote_result = self._wait_for_final_status(provider_image_path, builder.provider_image)
