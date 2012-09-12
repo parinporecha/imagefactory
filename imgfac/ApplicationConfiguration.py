@@ -65,6 +65,7 @@ class ApplicationConfiguration(Singleton):
             group_rest.add_argument('--no_ssl', action='store_true', default=False, help='Turn off SSL. (default: %(default)s)')
             group_rest.add_argument('--ssl_pem', default='*', help='PEM certificate file to use for HTTPS access to the REST interface. (default: A transient certificate is generated at runtime.)')
             group_rest.add_argument('--no_oauth', action='store_true', default=False, help='Use 2 legged OAuth to protect the REST interface. (default: %(default)s)')
+            group_rest.add_argument('--secondary', action='store_true', default=False, help='Operate as a secondary/helper factory. (default: %(default)s)')
         elif(appname == 'imagefactory'):
             argparser.add_argument('--nodebug', action='store_true', default=False, help='Turn off the default verbose CLI logging')
             argparser.add_argument('--output', choices=('log', 'json'), default='log', help='Choose between log or json output. (default: %(default)s)')

@@ -13,6 +13,8 @@
 #   limitations under the License.
 
 import logging
+import os.path
+import json
 from imgfac.Singleton import Singleton
 from Builder import Builder
 from imgfac.NotificationCenter import NotificationCenter
@@ -20,7 +22,10 @@ from threading import BoundedSemaphore
 from PersistentImageManager import PersistentImageManager
 from ReservationManager import ReservationManager
 from TargetImage import TargetImage
+from SecondaryHelper import SecondaryHelper
 import uuid
+
+SECONDARIES = "/etc/imagefactory/secondaries.json"
 
 class SecondaryDispatcher(Singleton):
 
@@ -30,17 +35,18 @@ class SecondaryDispatcher(Singleton):
         self.pending_uploads_lock = BoundedSemaphore()
         self.pim = PersistentImageManager.default_manager()
         self.res = ReservationManager()
-        #NotificationCenter().add_observer(self, 'handle_state_change', 'image.status')
-
-    def handle_state_change(self, notification):
-        status = notification.user_info['new_status']
-        if(status in ('COMPLETED', 'FAILED', 'DELETED', 'DELETEFAILED')):
-            self.builders_lock.acquire()
-            image_id = notification.sender.identifier
-            if(image_id in self.builders):
-                del self.builders[image_id]
-                self.log.debug('Removed builder from BuildDispatcher on notification from image %s: %s' % (image_id, status))
-            self.builders_lock.release()
+        self.secondaries = { } 
+        if os.path.isfile(SECONDARIES):
+            try:
+                secs = open(SECONDARIES, "r")
+                self.secondaries = json.load(secs)
+                secs.close()
+            except:
+                self.log.warning("Unable to load JSON for secondaries from %s", SECONDARIES)
+        if not 'targets' in self.secondaries:
+            self.secondaries['targets'] = { }
+        if not 'providers' in self.secondaries:
+            self.secondaries['providers'] = { }
 
     def queue_pending_upload(self, target_image_uuid):
         # Create a UUID - map it to the target_image_uuid and return it
@@ -71,7 +77,9 @@ class SecondaryDispatcher(Singleton):
         # Called during the clone process - we background the actual copy
         # and update the target_image in question to COMPLETED when the copy is finished
         # This allows the HTTP transaction to complete - in testing some upload clients
-        # timed out waiting for the copy to complete
+        # timed out waiting for the local copy to complete
+        # (bottle.py internally processes all uploaded files to completion, storing them as unnamed temporary
+        # files)
         target_update_thread = Thread(target=self._update_target_image_body, args=(target_image, new_body))
         target_update_thread.start()
 
@@ -118,32 +126,20 @@ class SecondaryDispatcher(Singleton):
 
         return (target_image, upload_id)
 
-    def builder_for_base_image(self, template, parameters=None):
-        builder = Builder()
-        builder.build_image_from_template(template, parameters=parameters)
-        self.builders_lock.acquire()
-        try:
-            self.builders[builder.base_image.identifier] = builder
-        finally:
-            self.builders_lock.release()
-        return builder
+    def get_secondary(self, target, provider):
+        if provider in self.secondaries['providers']:
+            return self.secondaries['providers'][provider]
+        elif target in self.secondaries['targets']:
+            return self.secondaries['targets'][target]
+        else:
+            return None
 
-    def builder_for_target_image(self, target, image_id=None, template=None, parameters=None):
-        builder = Builder()
-        builder.customize_image_for_target(target, image_id, template, parameters)
-        self.builders_lock.acquire()
+    def get_helper(self, secondary):
         try:
-            self.builders[builder.target_image.identifier] = builder
-        finally:
-            self.builders_lock.release()
-        return builder
-
-    def builder_for_provider_image(self, provider, credentials, target, image_id=None, template=None, parameters=None):
-        builder = Builder()
-        builder.create_image_on_provider(provider, credentials, target, image_id, template, parameters)
-        self.builders_lock.acquire()
-        try:
-            self.builders[builder.provider_image.identifier] = builder
-        finally:
-            self.builders_lock.release()
-        return builder
+            helper = SecondaryHelper(**secondary)
+        except:
+            self.log.error("Exception encountered when trying to create secondary helper object")
+            self.log.error("Secondary details: %s" % (secondary))
+            self.log.exception()
+        return helper
+     
