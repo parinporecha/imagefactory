@@ -31,7 +31,7 @@ from imgfac.ApplicationConfiguration import ApplicationConfiguration
 
 log = logging.getLogger(__name__)
 
-secondary_rest_api = Bottle(catchall=True)
+rest_api = Bottle(catchall=True)
 debug(True)
 
 def log_request(f):
