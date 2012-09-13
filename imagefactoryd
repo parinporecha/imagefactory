@@ -25,7 +25,7 @@ from imgfac.BuildDispatcher import BuildDispatcher
 from imgfac.Singleton import Singleton
 from imgfac.rest.bottle import *
 from imgfac.rest.RESTv2 import rest_api
-from imgfac.rest.RESTSecondaryv2 import secondary_rest_api
+from imgfac.rest.RESTSecondaryv2 import rest_api as secondary_rest_api
 from imgfac.PluginManager import PluginManager
 from time import asctime, localtime
 
@@ -194,7 +194,7 @@ class Application(Singleton):
 
         if self.app_config['secondary']:
             app = secondary_rest_api
-        else
+        else:
             app = rest_api
 
         # Don't set reloader to True or you will lose state.  You have been warned.

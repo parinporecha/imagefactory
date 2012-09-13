@@ -50,14 +50,13 @@ class SecondaryHelper(object):
             hooks = { }
 
         try:
+            headers = { }
             headers['content-type'] = content_type
             if method == "GET":
                 response = requests.get(url, proxies=self.proxies, verify=False)
             elif method == "POST":
-                response = requests.post(url, data=body, hooks=hooks, proxies=self.proxies, verify=False)
+                response = requests.post(url, data=body, headers = headers, hooks=hooks, proxies=self.proxies, verify=False)
             elif method == "POSTFILE":
-                if 'content-type' in headers:
-                    del headers['content-type']
                 response = requests.post(url, files=files, hooks = hooks, verify=False)
             elif method == "PUT":
                 response = requests.put(url, data=body, headers=headers, proxies=self.proxies)
