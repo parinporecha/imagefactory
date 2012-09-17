@@ -388,6 +388,10 @@ class Builder(object):
         """
 
         thread_name = str(uuid.uuid4())[0:8]
+        thread_kwargs = {'provider':provider, 'credentials':credentials, 'target':target, 'image_object':image_object, 'parameters':parameters}
+        self.delete_thread = Thread(target=self._delete_image, name=thread_name, args=(), kwargs=thread_kwargs)
+        self.delete_thread.start()
+
 
     def _delete_image(self, provider, credentials, target, image_object, parameters):
         try:
