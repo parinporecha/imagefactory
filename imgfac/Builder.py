@@ -29,6 +29,8 @@ from ProviderImage import ProviderImage
 from ImageFactoryException import ImageFactoryException
 from CallbackWorker import CallbackWorker
 from time import sleep
+from SecondaryDispatcher import SecondaryDispatcher
+from SecondaryPlugin import SecondaryPlugin
 
 class Builder(object):
     """ TODO: Docstring for Builder  """
@@ -247,9 +249,11 @@ class Builder(object):
             self.target_image = self.pim.image_with_id(image_id)
             if not self.target_image:
                 raise ImageFactoryException("Unable to retrieve target image with id (%s) from storage" % (image_id))
-            self.base_image = self.pim.image_with_id(self.target_image.base_image_id)
-            if not self.base_image:
-                raise ImageFactoryException("Unable to retrieve base image with id (%s) from storage" % (image_id))
+            # If we are being called as a secondary do not try to look up the base image
+            if not my_image_id:
+                self.base_image = self.pim.image_with_id(self.target_image.base_image_id)
+                if not self.base_image:
+                    raise ImageFactoryException("Unable to retrieve base image with id (%s) from storage" % (image_id))
             template = self.target_image.template
             self.provider_image.template = template
         elif template and image_id:
@@ -286,7 +290,11 @@ class Builder(object):
 
             template = template if(isinstance(template, Template)) else Template(template)
 
-            secondary = SecondaryDispatcher().get_secondary(target, provider)
+            if not self.app_config['secondary']:
+                secondary = SecondaryDispatcher().get_secondary(target, provider)
+            else:
+                # Do not allow nesting of secondaries
+                secondary = None
             if secondary:
                 # NOTE: This may overwrite the cloud_plugin that was used to create the target_image
                 #       This is expected and is correct
@@ -342,7 +350,11 @@ class Builder(object):
 
     def _snapshot_image(self, provider, credentials, target, image_id, template, parameters):
         try:
-            secondary = SecondaryDispatcher().get_secondary(target, provider)
+            if not self.app_config['secondary']:
+                secondary = SecondaryDispatcher().get_secondary(target, provider)
+            else:
+                # Do not allow nesting of secondaries
+                secondary = None
             if secondary:
                 self.cloud_plugin = SecondaryPlugin(SecondaryDispatcher().get_helper(secondary))
             else:    

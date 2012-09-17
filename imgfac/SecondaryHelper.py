@@ -23,6 +23,7 @@ import httplib2
 import urllib
 import urllib2
 import requests
+import json
 from oauth_hook import OAuthHook
 
 class SecondaryHelper(object):
@@ -64,7 +65,11 @@ class SecondaryHelper(object):
                 raise Exception("Unable to process HTTP method (%s)" % (method) )
 
             response_body = response.content
+            response_json = response.json
             response_headers = response.headers
+            if response_json:
+                self.log.debug("Response JSON attribute exists and is (%s)" % (response_json))
+                self.log.debug("Response BODY attribute is (%s)" % (response_body))
             status = response.status_code
             # Log additional detail if the HTTP resonse code is abnormal
             if(399 < status < 600):
@@ -73,9 +78,17 @@ class SecondaryHelper(object):
         except Exception, e:
             raise Exception("Problem encountered trying to execute HTTP request to (%s). Please check that your target service is running and reachable.\nException text: %s" % (url, e))
 
+    def _http_get_json(self, path):
+        result = self._http_get(path)
+        self.log.debug("Got result (%s) attempting to decode as JSON" % (result))
+        return json.loads(result)
+
     def _http_get(self, path):
         self.log.debug("Doing GET from path (%s)" % (path))
         return self.request(self.base_url + path, 'GET')[1]
+
+    def _http_post_json(self, path, body):
+        return json.loads(self._http_post(path, json.dumps(body), 'application/json'))
 
     def _http_post(self, path, body, content_type):
         self.log.debug("Doing POST to path (%s) with body (%s) and content type (%s)" % (path, body, content_type))

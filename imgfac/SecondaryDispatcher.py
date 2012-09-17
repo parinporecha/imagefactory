@@ -15,10 +15,10 @@
 import logging
 import os.path
 import json
+import shutil
 from imgfac.Singleton import Singleton
-from Builder import Builder
 from imgfac.NotificationCenter import NotificationCenter
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Thread
 from PersistentImageManager import PersistentImageManager
 from ReservationManager import ReservationManager
 from TargetImage import TargetImage
@@ -85,14 +85,14 @@ class SecondaryDispatcher(Singleton):
 
     def _update_target_image_body(self, target_image, new_body):
         try:
-            self.log.debug("Copying incoming file to %s" % (target_image.body))
-            dest = open(target_image.body,"w")
+            self.log.debug("Copying incoming file to %s" % (target_image.data))
+            dest = open(target_image.data,"w")
             shutil.copyfileobj(new_body, dest, 16384)
-            self.log.debug("Finished copying incoming file to %s" % (target_image.body))
+            self.log.debug("Finished copying incoming file to %s" % (target_image.data))
             target_image.status="COMPLETE"
-        except e:
+        except Exception as e:
             self.log.debug("Exception encountered when attempting to update target_image body")
-            self.log.exception()
+            self.log.exception(e)
             target_image.status="FAILED"
         finally:
             self.pim.save_image(target_image)
@@ -113,14 +113,19 @@ class SecondaryDispatcher(Singleton):
             if not target_image:
                 upload_id = self.queue_pending_upload(target_image_id)
                 target_image = TargetImage(image_id=target_image_id)
-                self.pim.add_image(target_image)
                 metadata_keys = target_image.metadata()
                 for data_element in request_data.keys():
                     if not (data_element in metadata_keys):
                         self.log.warning("Metadata field (%s) in incoming target_image clone request is non-standard - skipping" % (data_element))
                     else:
                          setattr(target_image, data_element, request_data[data_element])
+                # The posted image will, of course, be complete, so fix status here
+                target_image.status = "PENDING"
+                target_image.percent_complete = 0
+                target_image.status_detail = { 'activity': 'Image being cloned from primary factory - initial metadata set', 'error':None }
+                self.pim.add_image(target_image)
                 self.pim.save_image(target_image)
+                self.log.debug("Completed save of target_image (%s)" % target_image.identifier)
         finally:
             self.res.release_named_lock(target_image_id)
 
@@ -137,9 +142,8 @@ class SecondaryDispatcher(Singleton):
     def get_helper(self, secondary):
         try:
             helper = SecondaryHelper(**secondary)
-        except:
+            return helper
+        except Exception as e:
             self.log.error("Exception encountered when trying to create secondary helper object")
             self.log.error("Secondary details: %s" % (secondary))
-            self.log.exception()
-        return helper
-     
+            self.log.exception(e) 
