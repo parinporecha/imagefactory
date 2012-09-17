@@ -61,64 +61,6 @@ def log_request_nobody(f):
 def api_info():
     return {'name':'imagefactory_secondary', 'version':VERSION, 'api_version':'2.0'}
 
-@rest_api.get('/imagefactory/<image_collection>')
-@rest_api.get('/imagefactory/target_images/<target_image_id>/<image_collection>')
-@log_request
-@oauth_protect
-def list_images(image_collection, base_image_id=None, target_image_id=None, list_url=None):
-    try:
-        fetch_spec = {}
-        if(image_collection == 'target_images'):
-            fetch_spec['type'] = 'TargetImage'
-        elif(image_collection == 'provider_images'):
-            fetch_spec['type'] = 'ProviderImage'
-            if target_image_id:
-                fetch_spec['target_image_id'] = target_image_id
-        else:
-            raise HTTPResponse(status=404, output='%s not found' % image_collection)
-
-        fetched_images = PersistentImageManager.default_manager().images_from_query(fetch_spec)
-        images = list()
-        _url = list_url if list_url else request.url
-        for image in fetched_images:
-            resp_item = {image_collection[0:-1]:
-                            {'_type':type(image).__name__,
-                            'id':image.identifier,
-                            'href':'%s/%s' % (_url, image.identifier)}
-                        }
-            images.append(resp_item)
-
-        return images
-    except Exception as e:
-        log.exception(e)
-        raise HTTPResponse(status=500, output=e)
-
-@rest_api.post('/imagefactory/target_images/<target_image_id>')
-@log_request
-@oauth_protect
-def clone_target_image(target_image_id):
-    try:
-        request_data = RESTtools.form_data_for_content_type(request.headers.get('Content-Type'))    
-
-        (target_image, upload_id) = SecondaryDispatcher().prep_target_image_clone(request_data, target_image_id)
-
-        _response = { }
-        _response['target_image'] = {'_type':type(target_image).__name__,
-                                     'id':target_image.identifier,
-                                     'href':'%s' % (request.url)}
-        for key in target_image.metadata():
-            if key not in ('identifier', 'data'):
-                _response['target_image'][key] = getattr(target_image, key, None)
-        
-        if upload_id:
-            _response['upload_id'] = upload_id
-
-        response.status = 202
-        return _response
-    except Exception as e:
-        log.exception(e)
-        raise HTTPResponse(status=500, output=e)
-
 @rest_api.post('/imagefactory/image_body_upload/<upload_id>')
 @log_request_nobody
 #The ID itself is functioning as a shared secret available only to a client
@@ -129,8 +71,11 @@ def clone_target_image(target_image_id):
 def do_body_upload(upload_id):
 
     try:
-        new_body = request.files.image_body.file
-    except:
+        log.debug("Incoming file upload request has files %s" % (request.files.keys()))
+        request_copy = request.copy()
+        new_body = request_copy.files.image_body.file
+    except Exception as e:
+        log.exception(e)
         raise HTTPResponse(status=400, output='Incoming POST did not contain a file named image_body')
 
     try:
@@ -145,126 +90,152 @@ def do_body_upload(upload_id):
         log.debug("Got actual target_image")
         SecondaryDispatcher().update_target_image_body(target_image, new_body)
     finally:
+        pass
         # Bottle resets the connection if we don't do this
-        new_body.close()
+        #new_body.close()
 
     response.status=202
     return { "status_text": "Finished without an exception" }
 
-
-@rest_api.post('/imagefactory/provider_images/<provider_image_id>')
+@rest_api.get('/imagefactory/<image_collection>/<image_id>')
+@rest_api.post('/imagefactory/<image_collection>/<image_id>')
+@rest_api.get('/imagefactory/<image_collection>/<image_id>')
+@rest_api.post('/imagefactory/<image_collection>/<image_id>')
 @log_request
 @oauth_protect
-def create_provider_image(provider_image_id):
-    try:
-        image_type = "provider_image"
-        request_data = RESTtools.form_data_for_content_type(request.headers.get('Content-Type')).get(image_type)
-        if(not request_data):
-            raise HTTPResponse(status=400, output='%s not found in request.' % image_type)
+def operate_on_image_with_id(image_collection, image_id):
+    log.debug("In the generic route (%s)" % request.method)
+    image_type = image_collection[0:-1]
 
-        req_base_img_id = request_data.get('base_image_id')
-        req_target_img_id = request_data.get('target_image_id')
-        base_img_id = req_base_img_id if req_base_img_id else base_image_id
-        target_img_id = req_target_img_id if req_target_img_id else target_image_id
+    if image_type not in [ 'target_image', 'provider_image' ]:
+        raise HTTPResponse(status=500, output='Attempt to access invalid image type: %s' % image_type)
 
-        builder = BuildDispatcher().builder_for_provider_image(provider=request_data.get('provider'),
-                                                               credentials=request_data.get('credentials'),
-                                                               target=request_data.get('target'),
-                                                               image_id=target_img_id,
-                                                               template=request_data.get('template'),
-                                                               parameters=request_data.get('parameters'),
-                                                               my_image_id=provider_image_id)
-        image = builder.provider_image
-
-        _response = {'_type':type(image).__name__,
-                     'id':image.identifier,
-                     'href':'%s/%s' % (request.url, image.identifier)}
-        for key in image.metadata():
-            if key not in ('identifier', 'data'):
-                _response[key] = getattr(image, key, None)
-
-        response.status = 202
-        return {image_collection[0:-1]:_response}
-    except KeyError as e:
-        log.exception(e)
-        raise HTTPResponse(status=400, output='Missing value for key: %s' % e)
-    except Exception as e:
-        log.exception(e)
-        raise HTTPResponse(status=500, output=e)
-
-@rest_api.get('/imagefactory/target_images/<image_id>')
-@rest_api.get('/imagefactory/provider_images/<image_id>')
-@rest_api.get('/imagefactory/target_images/<target_image_id>/provider_images/<image_id>')
-@log_request
-@oauth_protect
-def image_with_id(image_id, base_image_id=None, target_image_id=None, provider_image_id=None):
-    try:
-        image = PersistentImageManager.default_manager().image_with_id(image_id)
-        if(not image):
-            raise HTTPResponse(status=404, output='No image found with id: %s' % image_id)
-        _type = type(image).__name__
-        _response = {'_type':_type,
-                     'id':image.identifier,
-                     'href':request.url}
-        for key in image.metadata():
-            if key not in ('identifier', 'data', 'base_image_id', 'target_image_id'):
-                _response[key] = getattr(image, key, None)
-
-        api_url = '%s://%s/imagefactory' % (request.urlparts[0], request.urlparts[1])
-
-        if(_type == "TargetImage"):
-            _objtype = 'target_image'
-            base_image_id = image.base_image_id
-            if(base_image_id):
-                base_image_href = '%s/base_images/%s' % (api_url, base_image_id)
-                base_image_dict = {'_type': 'BaseImage', 'id': base_image_id, 'href': base_image_href}
-                _response['base_image'] = base_image_dict
+    if request.method == "GET":
+        log.debug("In the generic GET")
+	try:
+	    image = PersistentImageManager.default_manager().image_with_id(image_id)
+	    if(not image):
+                log.error("Did search for image with id (%s) and got (%s)" % (image_id, image))
+		raise HTTPResponse(status=404, output='No image found with id: %s' % (image_id))
             else:
-                _response['base_image'] = None
-            _response['provider_images'] = list_images('provider_images',
-                                                        target_image_id = image.identifier,
-                                                        list_url = '%s/provider_images' % api_url)
-        elif(_type == "ProviderImage"):
-            _objtype = 'provider_image'
-            target_image_id = image.target_image_id
-            if(target_image_id):
-                target_image_href = '%s/target_images/%s' % (api_url, target_image_id)
-                target_image_dict = {'_type': 'TargetImage', 'id': target_image_id, 'href': target_image_href}
-                _response['target_image'] = target_image_dict
-            else:
-                _response['target_image'] = None
-        else:
-            log.error("Returning HTTP status 500 due to unknown image type: %s" % _type)
-            raise HTTPResponse(status=500, output='Bad type for found object: %s' % _type)
+                log.debug("Found image id (%s). Constructing response" % (image_id))
+	    _type = type(image).__name__
+	    _response = {'_type':_type,
+			 'id':image.identifier,
+			 'href':request.url}
+	    for key in image.metadata():
+		if key not in ('identifier', 'data', 'base_image_id', 'target_image_id'):
+		    _response[key] = getattr(image, key, None)
 
-        response.status = 200
-        return {_objtype:_response}
-    except Exception as e:
-        log.exception(e)
-        raise HTTPResponse(status=500, output=e)
+	    api_url = '%s://%s/imagefactory' % (request.urlparts[0], request.urlparts[1])
 
-@rest_api.get('/imagefactory/base_images/<image_id>/raw_image')
-@rest_api.get('/imagefactory/target_images/<image_id>/raw_image')
-@rest_api.get('/imagefactory/provider_images/<image_id>/raw_image')
-@rest_api.get('/imagefactory/base_images/<base_image_id>/target_images/<image_id>/raw_image')
-@rest_api.get('/imagefactory/base_images/<base_image_id>/target_images/<target_image_id>/provider_images/<image_id>/raw_image')
-@rest_api.get('/imagefactory/target_images/<target_image_id>/provider_images/<image_id>/raw_image')
-@log_request
-@oauth_protect
-def get_image_file(image_id, base_image_id=None, target_image_id=None, provider_image_id=None):
-    try:
-        image = PersistentImageManager.default_manager().image_with_id(image_id)
-        if(not image):
-            raise HTTPResponse(status=404, output='No image found with id: %s' % image_id)
-        path, filename = os.path.split(image.data)
-        return static_file(filename, path, download=True)
-    except Exception as e:
-        log.exception(e)
-        raise HTTPResponse(status=500, output=e)
+	    if(_type == "TargetImage"):
+		_objtype = 'target_image'
+	    elif(_type == "ProviderImage"):
+		_objtype = 'provider_image'
+	    else:
+		log.error("Returning HTTP status 500 due to unknown image type: %s" % _type)
+		raise HTTPResponse(status=500, output='Bad type for found object: %s' % _type) 
+
+            if _objtype != image_type:
+                raise HTTPResponse(status=500, output='Requested image type %s got image of type %s' % (image_type, _objtype))
+
+	    response.status = 200
+	    return {_objtype:_response}
+	except Exception as e:
+	    log.exception(e)
+	    raise HTTPResponse(status=500, output=e)
+
+#@rest_api.get('/imagefactory/<image_collection>')
+#@rest_api.get('/imagefactory/target_images/<target_image_id>/<image_collection>')
+#@log_request
+#@oauth_protect
+#def list_images(image_collection, base_image_id=None, target_image_id=None, list_url=None):
+#    try:
+#        fetch_spec = {}
+#        if(image_collection == 'target_images'):
+#            fetch_spec['type'] = 'TargetImage'
+#        elif(image_collection == 'provider_images'):
+#            fetch_spec['type'] = 'ProviderImage'
+#            if target_image_id:
+#                fetch_spec['target_image_id'] = target_image_id
+#        else:
+#            raise HTTPResponse(status=404, output='%s not found' % image_collection)
+#
+#        fetched_images = PersistentImageManager.default_manager().images_from_query(fetch_spec)
+#        images = list()
+#        _url = list_url if list_url else request.url
+#        for image in fetched_images:
+#            resp_item = {image_collection[0:-1]:
+#                            {'_type':type(image).__name__,
+#                            'id':image.identifier,
+#                            'href':'%s/%s' % (_url, image.identifier)}
+#                        }
+#            images.append(resp_item)
+#
+#        return images
+#    except Exception as e:
+#        log.exception(e)
+#        raise HTTPResponse(status=500, output=e)
+
+#@rest_api.post('/imagefactory/target_images/<target_image_id>')
+#@log_request
+#@oauth_protect
+#def clone_target_image(target_image_id):
+    elif request.method == "POST":
+        try:
+	    if image_type == 'target_image':
+		request_data = RESTtools.form_data_for_content_type(request.headers.get('Content-Type'))    
+
+		(target_image, upload_id) = SecondaryDispatcher().prep_target_image_clone(request_data, image_id)
+
+		_response = { }
+		_response['target_image'] = {'_type':type(target_image).__name__,
+					     'id':target_image.identifier,
+					     'href':'%s' % (request.url)}
+		for key in target_image.metadata():
+		    if key not in ('identifier', 'data'):
+			_response['target_image'][key] = getattr(target_image, key, None)
+		
+		if upload_id:
+		    _response['upload_id'] = upload_id
+
+		response.status = 202
+		return _response
+	    else:
+		request_data = RESTtools.form_data_for_content_type(request.headers.get('Content-Type'))
+		if(not request_data):
+		    raise HTTPResponse(status=400, output='%s not found in request.' % (image_type))
+
+		req_target_img_id = request_data.get('target_image_id')
+		target_img_id = req_target_img_id if req_target_img_id else target_image_id
+
+		builder = BuildDispatcher().builder_for_provider_image(provider=request_data.get('provider'),
+								       credentials=request_data.get('credentials'),
+								       target=request_data.get('target'),
+								       image_id=target_img_id,
+								       template=request_data.get('template'),
+								       parameters=request_data.get('parameters'),
+								       my_image_id=image_id)
+		image = builder.provider_image
+
+		_response = {'_type':type(image).__name__,
+			     'id':image.identifier,
+			     'href':'%s/%s' % (request.url, image.identifier)}
+		for key in image.metadata():
+		    if key not in ('identifier', 'data'):
+			_response[key] = getattr(image, key, None)
+
+		response.status = 202
+		return {image_collection[0:-1]:_response}
+        except Exception as e:
+            log.exception(e)
+	    raise HTTPResponse(status=500, output=e)
+    else:
+	raise HTTPResponse(status=405)
 
 @rest_api.delete('/imagefactory/target_images/<image_id>')
 @rest_api.delete('/imagefactory/provider_images/<image_id>')
-@rest_api.delete('/imagefactory/target_images/<target_image_id>/provider_images/<image_id>')
 @log_request
 @oauth_protect
 def delete_image_with_id(image_id, base_image_id=None, target_image_id=None, provider_image_id=None):
