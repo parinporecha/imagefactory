@@ -593,10 +593,14 @@ class EC2Cloud(object):
         # TODO: so is this
         self.target = target
 
+
         # Template must be defined for snapshots
         self.tdlobj = oz.TDL.TDL(xmlstring=str(template), rootpw_required=True)
         self._get_os_helper()
         self.os_helper.init_guest()
+
+        # Create a name combining the TDL name and the UUID for use when tagging EC2 AMIs
+        self.longname = self.tdlobj.name + "-" + self.new_image_id
 
         def replace(item):
             if item in [self.ec2_access_key, self.ec2_secret_key]:
