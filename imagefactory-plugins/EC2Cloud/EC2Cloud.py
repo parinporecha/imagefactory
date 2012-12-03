@@ -590,6 +590,8 @@ class EC2Cloud(object):
 
         # TODO: This is a convenience variable for refactoring - rename
         self.new_image_id = builder.provider_image.identifier
+        # TODO: so is this
+        self.target = target
 
         # Template must be defined for snapshots
         self.tdlobj = oz.TDL.TDL(xmlstring=str(template), rootpw_required=True)
