@@ -82,29 +82,11 @@ class FedoraOS(object):
         oz.ozutil.copyfile_sparse(builder.base_image.data, builder.target_image.data)
         self.image = builder.target_image.data
 
-        # Retrieve original libvirt_xml from base image - update filename
-        input_doc = libxml2.parseDoc(builder.base_image.parameters['libvirt_xml'])
-        disknodes = input_doc.xpathEval("/domain/devices/disk")
-        for disknode in disknodes:
-            if disknode.prop('device') == 'disk':
-                disknode.xpathEval('source')[0].setProp('file', builder.target_image.data)
-
-        # TODO: See about doing the Oz init first, grabbing the XML from there and then replacing only the filename
-
-        # Give a unique name - Oz fails if we attempt to launch multiple guests with identical libvirt_xml names
-        input_doc.xpathEval("/domain/name")[0].setContent("factory-build-%s" % (self.active_image.identifier))
-
-        # Give a unique identifier as well
-        input_doc.xpathEval("/domain/uuid")[0].setContent(str(self.active_image.identifier))
-
-        # And a mac address
-        input_doc.xpathEval("/domain/devices/interface/mac")[0].setProp('address', oz.ozutil.generate_macaddress())
-
-        libvirt_xml = input_doc.serialize(None, 1)
-
         self._init_oz()
 
         self.guest.diskimage = builder.target_image.data
+
+        libvirt_xml = self.guest._generate_xml("hd", None)
 
         try:
             self.log.debug("Doing second-stage target_image customization and ICICLE generation")
@@ -217,6 +199,7 @@ class FedoraOS(object):
         self.cloud_plugin_content = [ ]
         config_obj = ApplicationConfiguration()
         self.app_config = config_obj.configuration
+        self.res_mgr = ReservationManager()
         self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
 
         if "ec2" in config_obj.jeos_images:
@@ -314,6 +297,8 @@ class FedoraOS(object):
         # any arbitrary guest that Oz is capable of producing
         try:
             self.guest = oz.GuestFactory.guest_factory(self.tdlobj, self.oz_config, None)
+            # Oz just selects a random port here - This could potentially collide if we are unlucky
+            self.guest.listen_port = self.res_mgr.get_next_listen_port()
         except:
             raise ImageFactoryException("OS plugin does not support distro (%s) update (%s) in TDL" % (self.tdlobj.distro, self.tdlobj.update) )
 
@@ -330,8 +315,7 @@ class FedoraOS(object):
 
         tdl = guest.tdl
         queue_name = "%s-%s-%s-%s" % (tdl.distro, tdl.update, tdl.arch, tdl.installtype)
-        res_mgr = ReservationManager()
-        res_mgr.get_named_lock(queue_name)
+        self.res_mgr.get_named_lock(queue_name)
         try:
             guest.generate_install_media(force_download=False)
         finally:
