@@ -28,7 +28,7 @@ from tempfile import *
 from imgfac.ApplicationConfiguration import ApplicationConfiguration
 from imgfac.ImageFactoryException import ImageFactoryException
 from imgfac.ReservationManager import ReservationManager
-from imgfac.FactoryUtils import inspect_and_mount, sync_and_unmount, remove_net_persist
+from imgfac.FactoryUtils import launch_inspect_and_mount, shutdown_and_close, remove_net_persist
 
 from imgfac.OSDelegate import OSDelegate
 
@@ -105,9 +105,9 @@ class FedoraOS(object):
         # when we are done with our second  stage customizations
         # TODO: Consider moving all of that back here
 
-        guestfs_handle = inspect_and_mount(builder.target_image.data)
+        guestfs_handle = launch_inspect_and_mount(builder.target_image.data)
         remove_net_persist(guestfs_handle)
-        sync_and_unmount(guestfs_handle)
+        shutdown_and_close(guestfs_handle)
 
         try:
             self.log.debug("Doing second-stage target_image customization and ICICLE generation")

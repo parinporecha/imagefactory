@@ -7,10 +7,15 @@
 
 import guestfs
 
-def inspect_and_mount(diskfile):
+def launch_inspect_and_mount(diskfile):
     g = guestfs.GuestFS()
     g.add_drive(diskfile)
     g.launch()
+    return inspect_and_mount(g)
+
+def inspect_and_mount(guestfs_handle, relative_mount=""):
+    g = guestfs_handle
+    # Breaking this out allows the EC2 cloud plugin to avoid duplicating this
     inspection = g.inspect_os()
     if len(inspection) == 0:
         raise Exception("Unable to find an OS on disk image (%s)" % (diskfile))
@@ -26,12 +31,15 @@ def inspect_and_mount(diskfile):
     # simple way to ensure that mount points are present before a mount is attempted
     mountpoints.sort(key=len)
     for mountpoint in mountpoints:
-        g.mount_options("", fshash[mountpoint], mountpoint)
+        g.mount_options("", fshash[mountpoint], relative_mount + mountpoint)
+
     return g
 
-def sync_and_unmount(guestfs_handle):
-    guestfs_handle.sync()
-    guestfs_handle.umount_all()
+def shutdown_and_close(guestfs_handle):
+    shutdown_result = guestfs_handle.shutdown()
+    guestfs_handle.close()
+    if shutdown_result:
+        raise Exception("Error encountered during guestfs shutdown - data may not have been written out")
 
 def remove_net_persist(guestfs_handle):
     # In the cloud context we currently never need or want persistent net device names
@@ -43,6 +51,7 @@ def remove_net_persist(guestfs_handle):
 
     # Also clear out the MAC address this image was bound to.
     g.aug_init("/", 0)
+    # This silently fails, without an exception, if the HWADDR is already gone
     g.aug_rm("/files/etc/sysconfig/network-scripts/ifcfg-eth0/HWADDR")
     g.aug_save()
     g.aug_close()
