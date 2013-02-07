@@ -342,6 +342,6 @@ class FedoraOS(object):
         try:
             guest.generate_install_media(force_download=False)
         finally:
-            res_mgr.release_named_lock(queue_name)
+            self.res_mgr.release_named_lock(queue_name)
 
 
