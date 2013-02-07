@@ -17,11 +17,11 @@ def inspect_and_mount(diskfile):
     if len(inspection) > 1:
         raise Exception("Found multiple OSes on disk image (%s)" % (diskfile))
     filesystems = g.inspect_get_mountpoints(inspection[0])
-    fhash = { }
+    fshash = { }
     for filesystem in filesystems:
         fshash[filesystem[0]] = filesystem[1]
  
-    mountpoints = fhash.keys()
+    mountpoints = fshash.keys()
     # per suggestion in libguestfs doc - sort the mount points on length
     # simple way to ensure that mount points are present before a mount is attempted
     mountpoints.sort(key=len)
