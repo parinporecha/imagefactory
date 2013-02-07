@@ -20,7 +20,7 @@ import os
 import pycurl
 import logging
 import urllib2
-from psphere import config, template
+from psphere import template
 from psphere.client import Client
 from psphere.errors import TemplateNotFoundError
 from psphere.soap import VimFault
