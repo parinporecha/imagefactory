@@ -224,6 +224,7 @@ class FedoraOS(object):
         self.app_config = config_obj.configuration
         self.res_mgr = ReservationManager()
         self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
+        self.parameters = None
 
 
     def _init_oz(self):
@@ -258,6 +259,10 @@ class FedoraOS(object):
         self.log.info('create_base_image() called for FedoraOS plugin - creating a BaseImage')
 
         self.tdlobj = oz.TDL.TDL(xmlstring=template.xml, rootpw_required=self.app_config["tdl_require_root_pw"])
+        if parameters:
+            self.parameters = parameters
+        else:
+            self.parameters = { }
 
         # TODO: Standardize reference scheme for the persistent image objects in our builder
         #   Having local short-name copies like this may well be a good idea though they
@@ -295,7 +300,12 @@ class FedoraOS(object):
                 self.image = self.guest.diskimage
                 self.log.debug("Base install complete - Doing customization and ICICLE generation")
                 self.percent_complete = 30
-                self.output_descriptor = self.guest.customize_and_generate_icicle(libvirt_xml)
+                # Power users may wish to avoid ever booting the guest after the installer is finished
+                # They can do so by passing in a { "generate_icicle": False } KV pair in the parameters dict
+                if self.parameters.get("generate_icicle", True):
+                    self.output_descriptor = self.guest.customize_and_generate_icicle(libvirt_xml)
+                else:
+                    self.output_descriptor = self.guest.customize(libvirt_xml)
                 self.log.debug("Customization and ICICLE generation complete")
                 self.percent_complete = 50
             finally:
@@ -316,7 +326,7 @@ class FedoraOS(object):
         # Cloud plugins that use KVM directly, such as RHEV-M and openstack-kvm can accept
         # any arbitrary guest that Oz is capable of producing
         try:
-            self.guest = oz.GuestFactory.guest_factory(self.tdlobj, self.oz_config, None)
+            self.guest = oz.GuestFactory.guest_factory(self.tdlobj, self.oz_config, self.parameters.get("install_script", None))
             # Oz just selects a random port here - This could potentially collide if we are unlucky
             self.guest.listen_port = self.res_mgr.get_next_listen_port()
         except:
