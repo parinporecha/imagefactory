@@ -30,11 +30,14 @@ class ApplicationConfiguration(Singleton):
         super(ApplicationConfiguration, self)._singleton_init()
         self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
         self.configuration = self.__parse_arguments()
-        if not 'debug' in self.configuration:
+        if not 'debug' in self.configuration and 'nodebug' in self.configuration:
             # Slightly confusing, I know - For daemon mode we have a debug argument with default False
             # For cli, we debug by default and have a nodebug argument with default False
             # Rest of the code assumes a 'debug' value in app_config so set it here
             self.configuration['debug'] = not self.configuration['nodebug']
+        else:
+            # We can get here if elements of Factory are being used as modules - default to debug on
+            self.configuration['debug'] = True
         if not 'secondary' in self.configuration:
             # We use this in the non-daemon context so it needs to be set
             # TODO: Something cleaner?
