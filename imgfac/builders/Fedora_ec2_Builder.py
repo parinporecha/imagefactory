@@ -58,6 +58,8 @@ def ssh_execute_command(guestaddr, sshprivkey, command, timeout=10,
     #
     # -F /dev/null makes sure that we don't use the global or per-user
     # configuration files
+    #
+    # -t -t ensures we have a pseudo tty for sudo
 
     cmd = ["ssh", "-i", sshprivkey,
            "-F", "/dev/null",
@@ -65,6 +67,7 @@ def ssh_execute_command(guestaddr, sshprivkey, command, timeout=10,
            "-o", "StrictHostKeyChecking=no",
            "-o", "ConnectTimeout=" + str(timeout),
            "-o", "UserKnownHostsFile=/dev/null",
+           "-t", "-t",
            "-o", "PasswordAuthentication=no"]
 
     if prefix:
@@ -517,7 +520,7 @@ class Fedora_ec2_Builder(BaseBuilder):
 
             try:
 
-                stdout, stderr, retcode = ssh_execute_command(gutestaddr, self.guest.sshprivkey, "/bin/true", 
+                stdout, stderr, retcode = ssh_execute_command(guestaddr, self.guest.sshprivkey, "/bin/true", 
                                                               timeout = 10, user = user, prefix=prefix) 
                 break
             except:
@@ -534,7 +537,7 @@ class Fedora_ec2_Builder(BaseBuilder):
 
             def execute_regular_noex(command):
                 try:
-                    ignored = ssh_execute_command(gutestaddr, self.guest.sshprivkey, command, 
+                    ignored = ssh_execute_command(guestaddr, self.guest.sshprivkey, command, 
                                                   timeout = 10, user = user, prefix=prefix)
                 except:
                     pass
