@@ -24,7 +24,7 @@ import traceback
 import ConfigParser
 from os.path import isfile
 from time import *
-from tempfile import *
+from tempfile import NamedTemporaryFile
 from imgfac.ApplicationConfiguration import ApplicationConfiguration
 from imgfac.ImageFactoryException import ImageFactoryException
 from imgfac.ReservationManager import ReservationManager
@@ -225,7 +225,8 @@ class FedoraOS(object):
         self.res_mgr = ReservationManager()
         self.log = logging.getLogger('%s.%s' % (__name__, self.__class__.__name__))
         self.parameters = None
-
+        self.install_script_object = None
+        self.guest = None
 
     def _init_oz(self):
         # TODO: This is a convenience variable for refactoring - rename
@@ -273,13 +274,9 @@ class FedoraOS(object):
         # Used in the logging helper function above
         self.active_image = self.base_image
 
-        self._init_oz()
-
-        self.guest.diskimage = self.base_image.data
-        # The remainder comes from the original build_upload(self, build_id)
-
-        self.status="BUILDING"
         try:
+            self._init_oz()
+            self.guest.diskimage = self.base_image.data
             self.activity("Cleaning up any old Oz guest")
             self.guest.cleanup_old_guest()
             self.activity("Generating JEOS install media")
@@ -310,7 +307,11 @@ class FedoraOS(object):
                 self.percent_complete = 50
             finally:
                 self.activity("Cleaning up install artifacts")
-                self.guest.cleanup_install()
+                if self.guest:
+                    self.guest.cleanup_install()
+                if self.install_script_object:
+                    # NamedTemporaryFile - removed on close
+                    self.install_script_object.close()    
 
             self.log.debug("Generated disk image (%s)" % (self.guest.diskimage))
             # OK great, we now have a customized KVM image
@@ -326,7 +327,14 @@ class FedoraOS(object):
         # Cloud plugins that use KVM directly, such as RHEV-M and openstack-kvm can accept
         # any arbitrary guest that Oz is capable of producing
         try:
-            self.guest = oz.GuestFactory.guest_factory(self.tdlobj, self.oz_config, self.parameters.get("install_script", None))
+            install_script_name = None
+            install_script = self.parameters.get("install_script", None)
+            if install_file:
+                self.install_script_object = NamedTemporaryFile()
+                self.install_script_object.write(install_script)
+                self.install_script_object.flush()
+                install_script_name = self.install_script_object.name
+            self.guest = oz.GuestFactory.guest_factory(self.tdlobj, self.oz_config, install_script_name)
             # Oz just selects a random port here - This could potentially collide if we are unlucky
             self.guest.listen_port = self.res_mgr.get_next_listen_port()
         except:
