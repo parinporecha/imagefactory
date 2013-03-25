@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<domain type="kvm">
+  <name>F17_westest05</name>
+  <memory>1048576</memory>
+  <currentMemory>1048576</currentMemory>
+  <uuid>6c3fe90b-367b-43a2-ae47-cf7974963ee0</uuid>
+  <clock offset="utc"/>
+  <vcpu>1</vcpu>
+  <features>
+    <acpi/>
+    <apic/>
+    <pae/>
+  </features>
+  <os>
+    <type>hvm</type>
+    <boot dev="hd"/>
+  </os>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>destroy</on_reboot>
+  <on_crash>destroy</on_crash>
+  <devices>
+    <graphics port="-1" type="vnc"/>
+    <interface type="bridge">
+      <source bridge="virbr0"/>
+      <mac address="52:54:00:3c:c7:ee"/>
+      <model type="virtio"/>
+    </interface>
+    <input bus="ps2" type="mouse"/>
+    <console type="pty">
+      <target port="0"/>
+    </console>
+    <serial type="tcp">
+      <source mode="bind" host="127.0.0.1" service="36488"/>
+      <protocol type="raw"/>
+      <target port="1"/>
+    </serial>
+    <disk device="disk" type="file">
+      <target dev="vda" bus="virtio"/>
+      <source file="/var/lib/libvirt/images/F17_self_installing-from-network.qcow2"/>
+      <driver name="qemu" type="qcow2"/>
+    </disk>
+  </devices>
+</domain>

@@ -27,26 +27,71 @@ from imgfac.BuildDispatcher import BuildDispatcher
 from imgfac.ImageFactoryException import ImageFactoryException
 from imgfac.CloudDelegate import CloudDelegate
 from imgfac.FactoryUtils import launch_inspect_and_mount, shutdown_and_close, remove_net_persist, create_cloud_info
-from glance import client as glance_client
+from glanceclient import client as glance_client
+from keystoneclient.v2_0 import client as keystone_client
+from cinderclient import client as cinder_client
+from novaclient.v1_1 import client as nova_client
+from time import sleep
 
 def glance_upload(image_filename, creds = {'auth_url': None, 'password': None, 'strategy': 'noauth', 'tenant': None, 'username': None},
                   host = "0.0.0.0", port = "9292", token = None, name = 'Factory Test Image', disk_format = 'raw'):
 
-    image_meta = {'container_format': 'bare',
-     'disk_format': disk_format,
-     'is_public': True,
-     'min_disk': 0,
-     'min_ram': 0,
-     'name': name,
-     'properties': {'distro': 'rhel'}}
 
+    k = keystone_client.Client(username=creds['username'], password=creds['password'], tenant_name=creds['tenant'], auth_url=creds['auth_url'])
 
-    c = glance_client.Client(host=host, port=port,
-                             auth_tok=token, creds=creds)
-    image_data = open(image_filename, "r")
-    image_meta = c.add_image(image_meta, image_data)
-    image_data.close()
-    return image_meta['id']
+    os_image_endpoint = "http://" + host + ":" + str(port)
+    if (k.authenticate()):
+        #Connect to glance to upload the image
+        glance = glance_client.Client("1", endpoint=os_image_endpoint, token=k.auth_token)
+        image_filename = "/root/RHEL5.qcow2"
+        disk_format = "qcow2"
+        image_data = open(image_filename, "r")
+        #Connect to cinder so we can create a volume from an image in glance
+        #TODO change tenant name to something other then username, might be 
+        #different in future
+        cinder = cinder_client.Client('1', creds['username'], creds['password'], creds['username'], creds['auth_url'])
+        #Connect to nova to start an instance with the volume we created in cinder
+        nova = nova_client.Client(creds['username'], creds['password'], creds['username'],
+                auth_url=creds['auth_url'], insecure=True)
+        import pdb;pdb.set_trace()
+        image_meta = {'container_format': 'bare',
+         'disk_format': disk_format,
+         'is_public': True,
+         'min_disk': 0,
+         'min_ram': 0,
+         'name': name,
+         'data': image_data,
+         'properties': {'distro': 'rhel'}}
+        try:
+            image = glance.images.create(name="My Test Image")
+            print "Uploading to Glance"
+	    image.update(**image_meta)
+            import pdb;pdb.set_trace()
+            print "Starting asyncronous copying to Cinder"
+            volume = cinder.volumes.create(10, imageRef=image.id)
+            #check if volume finished creating
+            volume_status = cinder.volumes.get(volume.id).status
+            while (volume_status != 'available'):
+                print "Waiting for volume to be ready ... "
+                sleep(5)
+                volume_status = cinder.volumes.get(volume.id).status
+                if (volume_status == 'error'):
+                    raise Exception('Error converting image to volume')
+            #instance = nova.create
+            block_device_mapping = {'vda': volume.id + ":::0"} 
+
+            instance = nova.servers.create(name, None, 2, meta={}, block_device_mapping=block_device_mapping)
+            import pdb;pdb.set_trace()
+
+        except Exception, e:
+            print e
+        finally:
+            image_data.close()
+            import pdb;pdb.set_trace()
+            return image.id
+    else:
+        #TODO: Raise an exception
+	return None
 
 class OpenStackCloud(object):
     zope.interface.implements(CloudDelegate)
@@ -184,7 +229,7 @@ class OpenStackCloud(object):
 
         # For interested parties, this is the QCOW header struct in C
         # struct qcow_header {
-        #    uint32_t magic;·
+        #    uint32_t magic;
         #    uint32_t version;
         #    uint64_t backing_file_offset;
         #    uint32_t backing_file_size;
