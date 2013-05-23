@@ -124,7 +124,11 @@ class RHEVMHelper(object):
         # API lock protected action
         try:
             self._init_api()
-            self.execute_import()
+            try:
+                self.execute_import()
+            except Exception as e:
+                self.log.debug("Exception while trying to execute import via RHEVM API")
+                self.log.exception(e)
         finally:
             self._disconnect_api()
 
