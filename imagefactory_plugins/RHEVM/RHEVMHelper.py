@@ -129,6 +129,7 @@ class RHEVMHelper(object):
             except Exception as e:
                 self.log.debug("Exception while trying to execute import via RHEVM API")
                 self.log.exception(e)
+                raise
         finally:
             self._disconnect_api()
 
