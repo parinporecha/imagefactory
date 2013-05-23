@@ -104,12 +104,9 @@ class RHEVMHelper(object):
             self.ovf_desc = ovf_desc
         self.log.debug("Preparing for RHEVM template import of image file (%s)" % (image_filename))
 
-        # API lock protected action
-        try: 
-            self._init_api()
-            self.init_vm_import(image_filename, nfs_host, nfs_path, nfs_dir, cluster)
-        finally:
-            self._disconnect_api()
+        # TESTING ONLY - With version 3.2 and above we no longer need to serialize RHEV-M API access
+        self._init_api()
+        self.init_vm_import(image_filename, nfs_host, nfs_path, nfs_dir, cluster)
 
         if not ovf_name:
             self.ovf_name=str(self.tpl_uuid)
@@ -121,17 +118,8 @@ class RHEVMHelper(object):
         self.move_files()
         self.log.debug("Executing import")
 
-        # API lock protected action
-        try:
-            self._init_api()
-            try:
-                self.execute_import()
-            except Exception as e:
-                self.log.debug("Exception while trying to execute import via RHEVM API")
-                self.log.exception(e)
-                raise
-        finally:
-            self._disconnect_api()
+        # TESTING ONLY - No API lock - no disconnects
+        self.execute_import()
 
         return str(self.tpl_uuid)
 
