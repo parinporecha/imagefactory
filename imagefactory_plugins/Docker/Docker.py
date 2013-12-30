@@ -20,6 +20,7 @@ import libxml2
 import json
 import os
 import struct
+import subprocess
 from xml.etree.ElementTree import fromstring
 from imgfac.Template import Template
 from imgfac.ApplicationConfiguration import ApplicationConfiguration
@@ -30,6 +31,10 @@ from imgfac.FactoryUtils import launch_inspect_and_mount, shutdown_and_close, re
 
 class Docker(object):
     zope.interface.implements(CloudDelegate)
+
+    compress_commands = { "xz":    "xz -T 0 --stdout %s > %s",
+                          "gzip":  "gzip -c %s > %s",
+                          "bzip2": "bzip2 -c %s > %s" }
 
     def __init__(self):
         super(Docker, self).__init__()
@@ -54,10 +59,29 @@ class Docker(object):
         self.log.debug("builder_should_create_target_image called for Docker plugin - doing all our work here then stopping the process")
         # At this point our input base_image is available as builder.base_image.data
         # We simply mount it up in libguestfs and tar out the results as builder.target_image.data
+        compress_type = parameters.get('compress', None)
+        if compress_type:
+            if compress_type in self.compress_commands.keys():
+                compress_command = self.compress_commands[compress_type]
+            else:
+                raise Exception("Passed unknown compression type (%s) for Docker plugin" % (compress_type))
+        else:
+            compress_command = None
         guestfs_handle = launch_inspect_and_mount(builder.base_image.data, readonly = True)
         self.log.debug("Creating tar of root directory of input image %s saving as output image %s" % 
                        (builder.base_image.data, builder.target_image.data) )
-        guestfs_handle.tar_out_opts("/", builder.target_image.data, compress="gz")
+        guestfs_handle.tar_out_opts("/", builder.target_image.data)
+        if compress_command:
+            self.log.debug("Compressing tar file using %s" % (compress_type))
+            rawimage =  builder.target_image.data
+            compimage =  builder.target_image.data + ".tmp.%s" % (compress_type)
+            result = subprocess.call(compress_command % ( rawimage, compimage), shell = True)
+            if result:
+                raise Exception("Compression of image failed")
+            self.log.debug("Compression complete, replacing original")
+            os.unlink(rawimage)
+            os.rename(compimage, rawimage)
+            self.log.debug("Done")
         return False
 
     def builder_will_create_target_image(self, builder, target, image_id, template, parameters):
