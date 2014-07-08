@@ -26,7 +26,7 @@ import time
 
 plugins = ['EC2', 'TinMan','MockCloud','MockOS', 'OpenStack',
            'RHEVM', 'vSphere', 'Rackspace', 'IndirectionCloud',
-           'OVA', 'Docker']
+           'OVA', 'Docker', 'ovfcommon']
 
 VERSION = '1.1.6'
 RELEASE = '0'

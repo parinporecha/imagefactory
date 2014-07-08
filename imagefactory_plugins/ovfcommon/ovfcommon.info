@@ -1,0 +1,12 @@
+{
+    "type": "cloud",
+    "targets": [ [ "ovfcommon"] ],
+    "description": "ovfcommon plugin for imagefactory",
+    "maintainer": {
+        "name": "Red Hat, Inc.",
+        "email": "imagefactory-devel@lists.fedorahosted.org",
+        "url": "http://imgfac.org"
+    },
+    "version": "1.0",
+    "license": "Copyright 2012 Red Hat, Inc. - http://www.apache.org/licenses/LICENSE-2.0"
+}
